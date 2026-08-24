@@ -55,7 +55,8 @@ class Daemon:
         self.cfg = cfg
         self.signals = threading.Semaphore(0)
         self.recorder = Recorder(cfg.sample_rate, cfg.mic_device,
-                                 keep_mic_open=cfg.keep_mic_open)
+                                 keep_mic_open=cfg.keep_mic_open,
+                                 preroll_ms=cfg.preroll_ms)
         self.engine: Engine | None = None
         self.tray = None                  # set in run() if available
         self._pid_path: str | None = None
@@ -148,6 +149,14 @@ class Daemon:
                 notify("voicetype", "error - see /tmp/voicetype.log",
                        quiet=self.cfg.quiet)
             finally:
+                # Flush permits that piled up while the user was waiting on
+                # transcription - they'd otherwise instantly start a ghost
+                # recording of room noise / half-spoken next sentences.
+                drained = 0
+                while self.signals.acquire(blocking=False):
+                    drained += 1
+                if drained:
+                    log.info("flushed %d queued toggle(s)", drained)
                 self._busy = False
 
 

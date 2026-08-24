@@ -1,16 +1,25 @@
 """Microphone capture via sounddevice/PortAudio.
 
+Capture reliability comes from two buffers:
+
+  pre-roll ring buffer - while the stream is open we ALWAYS keep the last
+      preroll_ms of audio in a deque. When the hotkey fires, those frames
+      are prepended to the recording, so speech that started before you
+      pressed the key survives ("s is..." <- "This is..." bug).
+
+  tail padding - after the stop signal we keep buffering tail_padding_ms,
+      so pressing the hotkey mid-word doesn't chop trailing consonants
+      ("testin" <- "testing" bug).
+
 Two capture modes:
-  - keep_mic_open=True: the InputStream is opened once and kept running;
-    the callback only buffers while `capturing` is True. Recording starts
-    instantly on hotkey - no first-word clipping while PortAudio warms up.
-    Side effect: GNOME shows its mic-in-use dot permanently.
-  - keep_mic_open=False: stream opens per utterance (privacy-friendly,
-    but the first ~150ms of speech can be lost).
+  keep_mic_open=True: one persistent InputStream; zero delay on hotkey.
+      Side effect: GNOME shows its mic-in-use dot permanently.
+  keep_mic_open=False: stream opens per utterance (privacy-friendly).
 """
 
 import logging
 import time
+from collections import deque
 from collections.abc import Callable
 
 import numpy as np
@@ -21,10 +30,13 @@ log = logging.getLogger(__name__)
 
 class Recorder:
     def __init__(self, sample_rate: int = 16000, device: int | None = None,
-                 keep_mic_open: bool = True):
+                 keep_mic_open: bool = True, preroll_ms: int = 600):
         self.sample_rate = sample_rate
         self.device = device
         self.keep_mic_open = keep_mic_open
+        self._preroll: deque[np.ndarray] = deque()
+        self._preroll_max_samples = max(1, int(sample_rate * preroll_ms / 1000))
+        self._preroll_samples = 0
         self._frames: list[np.ndarray] = []
         self._capturing = False
         self._stream: sd.InputStream | None = None
@@ -32,6 +44,12 @@ class Recorder:
     def _callback(self, indata, _frames, _time_info, status) -> None:
         if status:
             log.warning("audio overflow: %s", status)
+        self._preroll.append(indata.copy())     # always, hotkey or not
+        self._preroll_samples += len(indata)
+        # trim oldest whole blocks until we're back inside the time budget
+        while (self._preroll_samples > self._preroll_max_samples
+               and len(self._preroll) > 1):
+            self._preroll_samples -= len(self._preroll.popleft())
         if self._capturing:
             self._frames.append(indata.copy())
 
@@ -39,7 +57,7 @@ class Recorder:
         return sd.InputStream(samplerate=self.sample_rate, channels=1,
                               dtype="float32", device=self.device,
                               callback=self._callback,
-                              blocksize=0)   # let PortAudio choose
+                              blocksize=512)    # small blocks = tight timing
 
     # ── persistent mode ──────────────────────────────────────────────────────
     def open(self) -> None:
@@ -48,7 +66,9 @@ class Recorder:
             return
         self._stream = self._make_stream()
         self._stream.start()
-        log.info("mic stream open (%d Hz, always-on)", self.sample_rate)
+        log.info("mic stream open (%d Hz, always-on, %.0fms preroll)",
+                 self.sample_rate,
+                 1000 * self._preroll_max_samples / self.sample_rate)
 
     def close(self) -> None:
         if self._stream is not None:
@@ -64,11 +84,9 @@ class Recorder:
 
         wait_stop is any blocking call that returns when recording should
         stop - e.g. threading.Event.wait or threading.Semaphore.acquire.
-
-        tail_padding_ms: keep buffering this long after wait_stop() returns,
-        so the hotkey pressed mid-word doesn't chop trailing consonants.
         """
-        self._frames = []
+        # seed with pre-hotkey audio so early speech isn't lost
+        self._frames = list(self._preroll)
 
         def _capture() -> None:
             self._capturing = True
@@ -82,7 +100,7 @@ class Recorder:
         if self._stream is not None:
             _capture()
         else:
-            # lazy mode: open per utterance
+            # lazy mode: no stream yet -> preroll empty, open per utterance
             with self._make_stream():
                 _capture()
         if not self._frames:

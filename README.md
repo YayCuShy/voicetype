@@ -142,6 +142,7 @@ Create `~/.config/voicetype/config.toml`. All keys optional:
 | `sample_rate` | `16000` | Leave at whisper-native 16 kHz |
 | `min_seconds` | `0.4` | Utterances shorter than this are discarded |
 | `tail_padding_ms` | `350` | Keep recording this long after the stop hotkey so trailing consonants aren't chopped |
+| `preroll_ms` | `600` | Mic audio buffered *before* the hotkey press and prepended to the recording — speech that starts early survives. Only active with `keep_mic_open = true` |
 | `save_audio` | `true` | Archive each utterance (WAV + transcript) to `~/.local/share/voicetype/sessions/` for debugging |
 | `mic_device` | `null` | Input index from `voicetype list-mics`, or null for system default |
 | `ydotool_delay` | `12` | Milliseconds between injected keystrokes (fallback path only) |

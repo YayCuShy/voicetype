@@ -21,6 +21,8 @@ class Config:
     min_seconds: float = 0.4           # ignore accidental taps
     tail_padding_ms: int = 350         # keep recording after stop signal so
                                        # trailing consonants aren't chopped
+    preroll_ms: int = 600              # audio buffered BEFORE the hotkey press,
+                                       # so speech that starts early survives
     mic_device: int | None = None      # None = system default input
     ydotool_delay: int = 12            # ms between keystrokes (fallback path)
     paste_binding: str = "ctrl+v"      # combo used to paste; terminals want ctrl+shift+v
