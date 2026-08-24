@@ -10,6 +10,7 @@ Built as a learning project after studying [talkietypie](https://github.com/piet
 
 - **100% local** — faster-whisper (`small.en`, int8 quantized) runs on CPU in real time (~2–4 s per utterance)
 - **Global hotkey** — works from any app via GNOME custom shortcuts (or any launcher that can run a command)
+- **Tray indicator** — colored dot in your top bar: grey = ready, red = recording (mic live), orange = transcribing
 - **Daemon architecture** — the model loads once and stays resident in RAM (~500 MB); toggling is instant
 - **Robust text injection** — fallback chain `ydotool → wtype → clipboard paste`, with clipboard save/restore so dictation never destroys what you had copied
 - **Safe lifecycle** — atomic PID-file claims, stale-process detection, and identity defense against PID recycling (won't signal an unrelated process that happens to reuse the daemon's PID)
@@ -143,6 +144,7 @@ Create `~/.config/voicetype/config.toml`. All keys optional:
 | `mic_device` | `null` | Input index from `voicetype list-mics`, or null for system default |
 | `ydotool_delay` | `8` | Milliseconds between injected keystrokes |
 | `quiet` | `false` | Suppress desktop notifications |
+| `tray` | `true` | System tray icon showing daemon state |
 
 Example — multilingual, GPU-accelerated:
 
@@ -192,6 +194,8 @@ Why not just `wtype`? GNOME's Mutter doesn't implement the virtual-keyboard prot
 | Terminal gets nothing | Clipboard-fallback pastes use plain Ctrl+V; some terminals want Ctrl+Shift+V |
 | Model download fails | Check connectivity to huggingface.co; delete `~/.cache/huggingface/hub/models--Systran--*` to retry cleanly |
 | Wrong microphone | Run `voicetype list-mics`, put the index in `mic_device` |
+| No tray icon | Ubuntu: `sudo apt install gir1.2-ayatanaappindicator3-0.1` and make sure the *Ubuntu AppIndicators* extension is enabled; also check the daemon wasn't started with `--no-tray` |
+| `Gtk-CRITICAL ... gtk_widget_get_scale_factor` spam in logs | Harmless GNOME Shell/AppIndicator polling noise — safe to ignore |
 | Everything broken | `voicetype stop && systemctl --user restart voicetype.service && journalctl --user -u voicetype -f` |
 
 ## Development

@@ -33,8 +33,13 @@ class Daemon:
         self.signals = threading.Semaphore(0)
         self.recorder = Recorder(cfg.sample_rate, cfg.mic_device)
         self.engine: Engine | None = None
+        self.tray = None                  # set in run() if available
         self._pid_path: str | None = None
         self._busy = False
+
+    def _ui(self, state: str) -> None:
+        if self.tray is not None:
+            self.tray.set_state(state)
 
     # ── signal handlers (must stay tiny) ─────────────────────────────────────
     def _on_toggle(self, _sig, _frame):
@@ -46,15 +51,18 @@ class Daemon:
 
     # ── one dictation cycle ──────────────────────────────────────────────────
     def _cycle(self) -> None:
+        self._ui("recording")
         notify("voicetype", "recording...", quiet=self.cfg.quiet)
         audio = self.recorder.record_until(self.signals.acquire)
         dur = self.recorder.duration(audio, self.cfg.sample_rate)
         if dur < self.cfg.min_seconds:
             log.info("ignored %.2fs utterance (< %.1fs)",
                      dur, self.cfg.min_seconds)
+            self._ui("idle")
             return
 
         assert self.engine is not None
+        self._ui("transcribing")
         notify("voicetype", "transcribing...", quiet=self.cfg.quiet)
         text = self.engine.transcribe(audio, self.cfg.sample_rate,
                                       self.cfg.language or None)
@@ -67,6 +75,7 @@ class Daemon:
         else:
             notify("voicetype", f"injection failed: {text[:60]}",
                    quiet=self.cfg.quiet)
+        self._ui("idle")
 
     def run(self) -> None:
         self._pid_path = str(claim_pid_file(TAG))
@@ -86,6 +95,10 @@ class Daemon:
 
         notify("voicetype", "ready", quiet=self.cfg.quiet)
         log.info("daemon ready (pid %d)", os.getpid())
+
+        if self.cfg.tray:
+            from .tray import create_tray
+            self.tray = create_tray()
 
         while True:
             self.signals.acquire()               # wait for first toggle

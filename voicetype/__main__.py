@@ -42,6 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="input device index (see --list-mics)")
         sp.add_argument("--quiet", action="store_true",
                         help="no desktop notifications")
+        sp.add_argument("--no-tray", action="store_true",
+                        help="disable the system tray icon")
 
     common(sub.add_parser("daemon", help="run daemon in foreground"))
     t = sub.add_parser("toggle", help="start/stop recording")
@@ -74,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
         "min_seconds": getattr(args, "min_seconds", None),
         "mic_device": getattr(args, "mic_device", None),
         "quiet": True if getattr(args, "quiet", False) else None,
+        "tray": False if getattr(args, "no_tray", False) else None,
     }
     cfg = load_config(overrides)
 
