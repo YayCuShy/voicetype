@@ -43,11 +43,20 @@ def _clipboard_get(env: dict) -> str | None:
 
 
 def _clipboard_set(env: dict, text: str) -> bool:
+    """wl-copy forks a child that serves the clipboard; if that child
+    inherits our stdout/stderr pipes, subprocess.run blocks until timeout
+    (the fork keeps them open) and we silently fall back to keystrokes.
+    Detach all stdio so the parent's exit closes the pipe immediately."""
     try:
-        r = subprocess.run(["wl-copy", "--", text], env=env,
-                           capture_output=True, text=True, timeout=2)
+        r = subprocess.run(
+            ["wl-copy", "--", text], env=env,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, timeout=3)
+        if r.returncode != 0:
+            log.warning("wl-copy exited rc=%d", r.returncode)
         return r.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        log.warning("wl-copy failed: %s", e)
         return False
 
 

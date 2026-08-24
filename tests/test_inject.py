@@ -31,6 +31,19 @@ def test_no_tools_at_all_fails(no_clipboard, monkeypatch):
     assert inject.inject_text("hello") is False
 
 
+def test_wl_copy_stdio_detached():
+    """Regression: wl-copy's forked clipboard-server child inherits our
+    pipes, so capture_output blocks until timeout and paste silently
+    fails. stdio must be DEVNULL."""
+    with patch.object(inject.subprocess, "run",
+                      return_value=subprocess.CompletedProcess([], 0)) as run:
+        assert inject._clipboard_set({}, "x") is True
+    kw = run.call_args.kwargs
+    assert kw["stdout"] == subprocess.DEVNULL
+    assert kw["stderr"] == subprocess.DEVNULL
+    assert kw["stdin"] == subprocess.DEVNULL
+
+
 def test_paste_is_primary_short_circuits_typing(monkeypatch):
     """Clipboard-paste must run before keystroke synthesis and succeed,
     so ydotool/wtype are never reached."""
