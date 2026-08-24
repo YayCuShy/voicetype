@@ -54,8 +54,10 @@ def test_paste_is_primary_short_circuits_typing(monkeypatch):
                           [], 0, stdout="hello")) as run:
         assert inject.inject_text("hello") is True
     tools = [c.args[0][0] for c in run.call_args_list]
-    # read old -> copy -> verify ownership -> paste combo -> restore old
-    assert tools == ["wl-paste", "wl-copy", "wl-paste", "ydotool", "wl-copy"]
+    # read old -> copy -> verify ownership -> phased chord -> restore old
+    assert tools[0] == "wl-paste" and tools[1] == "wl-copy"
+    assert tools[-1] == "wl-copy"                       # clipboard restored
+    assert all(t != "wtype" for t in tools)             # never reached
     assert all(c.args[0][1] != "type" for c in run.call_args_list)
 
 
@@ -103,19 +105,33 @@ def test_falls_through_to_wtype_when_ydotool_missing(no_clipboard, monkeypatch):
         assert run.call_args.args[0][0] == "wtype"
 
 
-def test_paste_binding_combo_generation():
-    assert inject._paste_combo("ctrl+v") == ["29:1", "47:1", "47:0", "29:0"]
-    assert inject._paste_combo("ctrl+shift+v") == [
-        "29:1", "42:1", "47:1", "47:0", "42:0", "29:0"]
-    with pytest.raises(ValueError):
-        inject._paste_combo("ctrl+meta+v")
+def test_paste_binding_phases_modifiers(monkeypatch):
+    """Chord must be sent in phases with gaps - instant fire gets terminals
+    to miss the modifier state entirely (combo silently no-ops)."""
+    monkeypatch.setattr(inject.shutil, "which", _which_factory(
+        {"ydotool": True, "wl-copy": True}))
+    with patch.object(inject.subprocess, "run",
+                      return_value=subprocess.CompletedProcess(
+                          [], 0, stdout="x")) as run, \
+         patch.object(inject, "_clipboard_get", return_value=None), \
+         patch.object(inject, "_clipboard_set", return_value=True):
+        assert inject.inject_text("hi", paste_binding="ctrl+shift+v") is True
+    key_calls = [c.args[0] for c in run.call_args_list
+                 if c.args[0][:2] == ["ydotool", "key"]]
+    assert key_calls == [
+        ["ydotool", "key", "29:1", "42:1"],      # mods down together
+        ["ydotool", "key", "47:1"],              # v down (after a gap)
+        ["ydotool", "key", "47:0"],              # v up
+        ["ydotool", "key", "42:0", "29:0"],      # mods up in reverse
+    ]
 
 
 def test_invalid_paste_binding_falls_back_to_typing(no_clipboard, monkeypatch):
     monkeypatch.setattr(inject.shutil, "which", _which_factory(
         {"ydotool": True, "wl-copy": True}))
     with patch.object(inject.subprocess, "run",
-                      return_value=subprocess.CompletedProcess([], 0)) as run:
+                      return_value=subprocess.CompletedProcess(
+                          [], 0, stdout="")) as run:
         assert inject.inject_text("hi", paste_binding="ctrl+bogus") is True
     assert run.call_args.args[0][:2] == ["ydotool", "type"]
 

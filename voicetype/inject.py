@@ -81,6 +81,12 @@ def _wtype_type(text: str, env: dict) -> bool:
     return r.returncode == 0
 
 
+def _press_keys(env: dict, events: list[str]) -> bool:
+    r = subprocess.run(["ydotool", "key", *events],
+                       capture_output=True, text=True, timeout=5)
+    return r.returncode == 0
+
+
 def _clipboard_paste(text: str, env: dict, binding: str = "ctrl+v") -> bool:
     old = _clipboard_get(env)
     if not _clipboard_set(env, text):
@@ -108,37 +114,39 @@ def _clipboard_paste(text: str, env: dict, binding: str = "ctrl+v") -> bool:
     if not verified:
         log.warning("clipboard never matched payload - pasting anyway")
         verified = True                    # old behaviour beats no output
+
+    # Send the chord in PHASES with real gaps between them: firing all
+    # key-down/up events back-to-back gets terminals to miss the modifier
+    # state entirely (combo silently does nothing).
+    keys = [k.strip().lower() for k in binding.split("+") if k.strip()]
+    unknown = [k for k in keys if k not in _KEY_CODES]
+    if unknown:
+        log.warning("unknown keys %s in paste_binding - falling back "
+                    "to keystroke typing", unknown)
+        return False
+    mods = [_KEY_CODES[k] for k in keys if k != "v" and k != "c"]
+    main = _KEY_CODES[keys[-1]]
+    ok = True
+    ok &= _press_keys(env, [f"{m}:1" for m in mods])          # mods down
     time.sleep(0.05)
-    r = subprocess.run(
-        ["ydotool", "key", *_paste_combo(binding)],
-        capture_output=True, text=True, timeout=5)
-    ok = r.returncode == 0
+    ok &= _press_keys(env, [f"{main}:1"])                     # main down
+    time.sleep(0.05)
+    ok &= _press_keys(env, [f"{main}:0"])                     # main up
+    time.sleep(0.05)
+    ok &= _press_keys(env, [f"{m}:0" for m in reversed(mods)])  # mods up
+    time.sleep(0.05)                                          # settle
     if not ok:
-        log.warning("clipboard paste failed: %s", r.stderr.strip())
-    else:
-        log.info("delivered via clipboard paste (%s)", binding)
-        time.sleep(0.3)                      # let the target app consume it
-        if old is not None:
-            _clipboard_set(env, old)         # restore user's clipboard
-    return ok
+        log.warning("paste combo failed: %s", binding)
+        return False
+    log.info("delivered via clipboard paste (%s)", binding)
+    time.sleep(0.3)                      # let the target app consume it
+    if old is not None:
+        _clipboard_set(env, old)         # restore user's clipboard
+    return True
 
 
 # key codes for paste-combo synthesis (linux/input-event-codes.h)
 _KEY_CODES = {"ctrl": 29, "shift": 42, "alt": 56, "v": 47, "c": 46, "x": 45}
-
-
-def _paste_combo(binding: str) -> list[str]:
-    """'ctrl+shift+v' -> ydotool key args pressing modifiers then key."""
-    keys = [k.strip().lower() for k in binding.split("+") if k.strip()]
-    unknown = [k for k in keys if k not in _KEY_CODES]
-    if unknown:
-        raise ValueError(f"unknown keys in paste_binding: {unknown}")
-    seq = []
-    for k in keys:                       # press in order
-        seq.append(f"{_KEY_CODES[k]}:1")
-    for k in reversed(keys):             # release in reverse
-        seq.append(f"{_KEY_CODES[k]}:0")
-    return seq
 
 
 def inject_text(text: str, delay_ms: int = 8,
@@ -162,11 +170,8 @@ def inject_text(text: str, delay_ms: int = 8,
 
     # 1. clipboard paste - Unicode & layout safe, clipboard restored after
     if shutil.which("wl-copy") and shutil.which("ydotool"):
-        try:
-            if _clipboard_paste(text, env, paste_binding):
-                return True
-        except ValueError as e:
-            log.warning("%s - falling back to keystroke typing", e)
+        if _clipboard_paste(text, env, paste_binding):
+            return True
     # 2. direct keystroke synthesis (ASCII-safe only)
     if shutil.which("ydotool"):
         if _ydotool_type(text, delay_ms):

@@ -1,3 +1,3 @@
 """voicetype - offline push-to-toggle dictation for Linux/Wayland."""
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
