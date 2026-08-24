@@ -127,14 +127,18 @@ def _clipboard_paste(text: str, env: dict, binding: str = "ctrl+v") -> bool:
     mods = [_KEY_CODES[k] for k in keys if k != "v" and k != "c"]
     main = _KEY_CODES[keys[-1]]
     ok = True
-    ok &= _press_keys(env, [f"{m}:1" for m in mods])          # mods down
-    time.sleep(0.05)
-    ok &= _press_keys(env, [f"{main}:1"])                     # main down
-    time.sleep(0.05)
-    ok &= _press_keys(env, [f"{main}:0"])                     # main up
-    time.sleep(0.05)
-    ok &= _press_keys(env, [f"{m}:0" for m in reversed(mods)])  # mods up
-    time.sleep(0.05)                                          # settle
+    try:
+        ok &= _press_keys(env, [f"{m}:1" for m in mods])          # mods down
+        time.sleep(0.05)
+        ok &= _press_keys(env, [f"{main}:1"])                     # main down
+        time.sleep(0.05)
+        ok &= _press_keys(env, [f"{main}:0"])                     # main up
+        time.sleep(0.05)
+    finally:
+        # ALWAYS release modifiers - a mid-sequence failure must never leave
+        # ctrl/shift logically stuck at the uinput device
+        _press_keys(env, [f"{m}:0" for m in reversed(mods)])
+    time.sleep(0.05)                                              # settle
     if not ok:
         log.warning("paste combo failed: %s", binding)
         return False
