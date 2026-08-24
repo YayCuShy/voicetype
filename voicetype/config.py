@@ -22,7 +22,8 @@ class Config:
     mic_device: int | None = None      # None = system default input
     ydotool_delay: int = 8             # ms between keystrokes (12 too slow?)
     quiet: bool = False                # suppress desktop notifications
-    tray: bool = True                  # system tray icon showing state
+    tray: bool = False                 # tray icon needs AppIndicator ext
+    keep_mic_open: bool = True         # pre-opened stream: no first-word clipping
 
 
 def load_config(cli_overrides: dict | None = None) -> Config:

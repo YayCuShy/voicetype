@@ -31,7 +31,8 @@ class Daemon:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self.signals = threading.Semaphore(0)
-        self.recorder = Recorder(cfg.sample_rate, cfg.mic_device)
+        self.recorder = Recorder(cfg.sample_rate, cfg.mic_device,
+                                 keep_mic_open=cfg.keep_mic_open)
         self.engine: Engine | None = None
         self.tray = None                  # set in run() if available
         self._pid_path: str | None = None
@@ -46,6 +47,7 @@ class Daemon:
         self.signals.release()
 
     def _on_shutdown(self, _sig, _frame):
+        self.recorder.close()
         release_pid_file(self._pid_path)
         sys.exit(0)
 
@@ -99,6 +101,13 @@ class Daemon:
         if self.cfg.tray:
             from .tray import create_tray
             self.tray = create_tray()
+        if self.cfg.keep_mic_open:
+            try:
+                self.recorder.open()         # zero-delay recording start
+            except Exception:
+                log.exception("could not keep mic open; falling back "
+                              "to per-utterance capture")
+                self.cfg.keep_mic_open = False
 
         while True:
             self.signals.acquire()               # wait for first toggle

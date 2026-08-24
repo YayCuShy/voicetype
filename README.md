@@ -144,7 +144,8 @@ Create `~/.config/voicetype/config.toml`. All keys optional:
 | `mic_device` | `null` | Input index from `voicetype list-mics`, or null for system default |
 | `ydotool_delay` | `8` | Milliseconds between injected keystrokes |
 | `quiet` | `false` | Suppress desktop notifications |
-| `tray` | `true` | System tray icon showing daemon state |
+| `tray` | `false` | System tray icon (requires the Ubuntu AppIndicators extension) |
+| `keep_mic_open` | `true` | Keep the mic stream open between utterances — recording starts instantly, no first-word clipping. Side effect: GNOME's mic-in-use dot stays on. Set `false` for privacy-friendly per-utterance capture |
 
 Example — multilingual, GPU-accelerated:
 
@@ -193,6 +194,7 @@ Why not just `wtype`? GNOME's Mutter doesn't implement the virtual-keyboard prot
 | Daemon won't start | Another instance may hold the PID file: `voicetype status`, then `kill $(cut -d' ' -f1 $XDG_RUNTIME_DIR/voicetype.pid)` |
 | Terminal gets nothing | Clipboard-fallback pastes use plain Ctrl+V; some terminals want Ctrl+Shift+V |
 | Model download fails | Check connectivity to huggingface.co; delete `~/.cache/huggingface/hub/models--Systran--*` to retry cleanly |
+| Missing first words | Keep `keep_mic_open = true` (default) so capture starts the instant you press the hotkey |
 | Wrong microphone | Run `voicetype list-mics`, put the index in `mic_device` |
 | No tray icon | Ubuntu: `sudo apt install gir1.2-ayatanaappindicator3-0.1` and make sure the *Ubuntu AppIndicators* extension is enabled; also check the daemon wasn't started with `--no-tray` |
 | `Gtk-CRITICAL ... gtk_widget_get_scale_factor` spam in logs | Harmless GNOME Shell/AppIndicator polling noise — safe to ignore |
