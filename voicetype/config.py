@@ -19,12 +19,15 @@ class Config:
     compute_type: str = "int8"         # int8 fast on CPU, float16 on GPU
     sample_rate: int = 16000           # whisper-native rate
     min_seconds: float = 0.4           # ignore accidental taps
+    tail_padding_ms: int = 350         # keep recording after stop signal so
+                                       # trailing consonants aren't chopped
     mic_device: int | None = None      # None = system default input
     ydotool_delay: int = 12            # ms between keystrokes (fallback path)
     paste_binding: str = "ctrl+v"      # combo used to paste; terminals want ctrl+shift+v
     quiet: bool = False                # suppress desktop notifications
     tray: bool = False                 # tray icon needs AppIndicator ext
     keep_mic_open: bool = True         # pre-opened stream: no first-word clipping
+    save_audio: bool = True            # keep utterance WAVs for debugging
 
 
 def load_config(cli_overrides: dict | None = None) -> Config:

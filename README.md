@@ -141,6 +141,8 @@ Create `~/.config/voicetype/config.toml`. All keys optional:
 | `compute_type` | `"int8"` | `int8` best for CPU, `float16` for GPU |
 | `sample_rate` | `16000` | Leave at whisper-native 16 kHz |
 | `min_seconds` | `0.4` | Utterances shorter than this are discarded |
+| `tail_padding_ms` | `350` | Keep recording this long after the stop hotkey so trailing consonants aren't chopped |
+| `save_audio` | `true` | Archive each utterance (WAV + transcript) to `~/.local/share/voicetype/sessions/` for debugging |
 | `mic_device` | `null` | Input index from `voicetype list-mics`, or null for system default |
 | `ydotool_delay` | `12` | Milliseconds between injected keystrokes (fallback path only) |
 | `paste_binding` | `"ctrl+v"` | Combo used to paste from clipboard — the primary injection method, safe for any Unicode/layout. Use `"ctrl+shift+v"` if you mainly dictate into terminals |

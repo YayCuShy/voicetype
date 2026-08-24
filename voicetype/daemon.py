@@ -15,6 +15,11 @@ import subprocess
 import sys
 import threading
 import time
+import wave
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
 
 from .config import Config
 from .engine import Engine
@@ -25,6 +30,24 @@ from .recorder import Recorder
 log = logging.getLogger(__name__)
 
 TAG = "voicetype-daemon"
+SESSIONS_DIR = Path.home() / ".local" / "share" / "voicetype" / "sessions"
+
+
+def save_session(audio: np.ndarray, sample_rate: int, text: str) -> None:
+    """Archive utterance audio + transcript so mismatches are debuggable."""
+    try:
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        pcm = (np.clip(audio.flatten(), -1, 1) * 32767).astype("<i2")
+        with wave.open(str(SESSIONS_DIR / f"{stamp}.wav"), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(sample_rate)
+            w.writeframes(pcm.tobytes())
+        (SESSIONS_DIR / f"{stamp}.txt").write_text(text + "\n")
+        log.debug("archived %s.wav", stamp)
+    except OSError:
+        log.exception("failed to archive session")
 
 
 class Daemon:
@@ -55,7 +78,8 @@ class Daemon:
     def _cycle(self) -> None:
         self._ui("recording")
         notify("voicetype", "recording...", quiet=self.cfg.quiet)
-        audio = self.recorder.record_until(self.signals.acquire)
+        audio = self.recorder.record_until(self.signals.acquire,
+                                           self.cfg.tail_padding_ms)
         dur = self.recorder.duration(audio, self.cfg.sample_rate)
         if dur < self.cfg.min_seconds:
             log.info("ignored %.2fs utterance (< %.1fs)",
@@ -68,6 +92,8 @@ class Daemon:
         notify("voicetype", "transcribing...", quiet=self.cfg.quiet)
         text = self.engine.transcribe(audio, self.cfg.sample_rate,
                                       self.cfg.language or None)
+        if self.cfg.save_audio:
+            save_session(audio, self.cfg.sample_rate, text)
         if not text:
             return
 

@@ -57,6 +57,8 @@ def _ydotool_type(text: str, delay_ms: int) -> bool:
         capture_output=True, text=True, timeout=30 + len(text) * delay_ms // 100)
     if r.returncode != 0:
         log.warning("ydotool failed rc=%d: %s", r.returncode, r.stderr.strip())
+    else:
+        log.info("delivered via ydotool typing (layout-sensitive!)")
     return r.returncode == 0
 
 
@@ -65,6 +67,8 @@ def _wtype_type(text: str, env: dict) -> bool:
                        text=True, timeout=10)
     if r.returncode != 0:
         log.warning("wtype failed rc=%d: %s", r.returncode, r.stderr.strip())
+    else:
+        log.info("delivered via wtype")
     return r.returncode == 0
 
 
@@ -72,6 +76,29 @@ def _clipboard_paste(text: str, env: dict, binding: str = "ctrl+v") -> bool:
     old = _clipboard_get(env)
     if not _clipboard_set(env, text):
         return False
+    # Race guard: wl-copy takes a moment to claim ownership. Pasting before
+    # it does delivers the user's OLD clipboard (stale-text bug). Poll until
+    # the clipboard verifiably holds our payload; proceed optimistically on
+    # read failure so desktops without wl-paste still work.
+    deadline = time.time() + 0.4
+    verified = False
+    while time.time() < deadline:
+        try:
+            r = subprocess.run(["wl-paste", "--no-newline"], env=env,
+                               capture_output=True, text=True, timeout=1)
+            if r.returncode != 0:
+                verified = True            # can't verify: optimistic
+                break
+            if r.stdout == text:
+                verified = True
+                break
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            verified = True                # can't verify: optimistic
+            break
+        time.sleep(0.03)
+    if not verified:
+        log.warning("clipboard never matched payload - pasting anyway")
+        verified = True                    # old behaviour beats no output
     time.sleep(0.05)
     r = subprocess.run(
         ["ydotool", "key", *_paste_combo(binding)],
@@ -80,6 +107,7 @@ def _clipboard_paste(text: str, env: dict, binding: str = "ctrl+v") -> bool:
     if not ok:
         log.warning("clipboard paste failed: %s", r.stderr.strip())
     else:
+        log.info("delivered via clipboard paste (%s)", binding)
         time.sleep(0.3)                      # let the target app consume it
         if old is not None:
             _clipboard_set(env, old)         # restore user's clipboard

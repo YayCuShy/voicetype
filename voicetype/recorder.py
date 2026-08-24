@@ -10,6 +10,7 @@ Two capture modes:
 """
 
 import logging
+import time
 from collections.abc import Callable
 
 import numpy as np
@@ -57,27 +58,33 @@ class Recorder:
             log.info("mic stream closed")
 
     # ── capture ──────────────────────────────────────────────────────────────
-    def record_until(self, wait_stop: Callable[[], None]) -> np.ndarray | None:
+    def record_until(self, wait_stop: Callable[[], None],
+                     tail_padding_ms: int = 0) -> np.ndarray | None:
         """Capture mic audio until wait_stop() returns. Returns [n,1] float32.
 
         wait_stop is any blocking call that returns when recording should
         stop - e.g. threading.Event.wait or threading.Semaphore.acquire.
+
+        tail_padding_ms: keep buffering this long after wait_stop() returns,
+        so the hotkey pressed mid-word doesn't chop trailing consonants.
         """
         self._frames = []
-        if self._stream is not None:
+
+        def _capture() -> None:
             self._capturing = True
             try:
                 wait_stop()
+                if tail_padding_ms > 0:
+                    time.sleep(tail_padding_ms / 1000)
             finally:
                 self._capturing = False
+
+        if self._stream is not None:
+            _capture()
         else:
             # lazy mode: open per utterance
-            self._capturing = True
-            try:
-                with self._make_stream():
-                    wait_stop()
-            finally:
-                self._capturing = False
+            with self._make_stream():
+                _capture()
         if not self._frames:
             log.warning("no audio frames captured")
             return None

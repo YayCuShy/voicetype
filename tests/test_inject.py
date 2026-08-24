@@ -37,11 +37,32 @@ def test_paste_is_primary_short_circuits_typing(monkeypatch):
     monkeypatch.setattr(inject.shutil, "which", _which_factory(
         {"ydotool": True, "wtype": True, "wl-copy": True}))
     with patch.object(inject.subprocess, "run",
-                      return_value=subprocess.CompletedProcess([], 0)) as run:
+                      return_value=subprocess.CompletedProcess(
+                          [], 0, stdout="hello")) as run:
         assert inject.inject_text("hello") is True
     tools = [c.args[0][0] for c in run.call_args_list]
-    assert tools == ["wl-paste", "wl-copy", "ydotool"]   # key-combo only
+    # read old -> copy -> verify ownership -> paste combo -> restore old
+    assert tools == ["wl-paste", "wl-copy", "wl-paste", "ydotool", "wl-copy"]
     assert all(c.args[0][1] != "type" for c in run.call_args_list)
+
+
+def test_paste_waits_for_clipboard_ownership(monkeypatch):
+    """Regression: pasting before wl-copy claims ownership delivered the
+    user's STALE clipboard. First read must see old content and retry."""
+    monkeypatch.setattr(inject.shutil, "which", _which_factory(
+        {"ydotool": True, "wl-copy": True}))
+    responses = iter([subprocess.CompletedProcess([], 0, stdout=None),
+                      subprocess.CompletedProcess([], 0, stdout="OLD CLIP"),
+                      subprocess.CompletedProcess([], 0, stdout="NEW TEXT")])
+    def fake_run(cmd, **kw):
+        if cmd[0] == "wl-paste":
+            return next(responses)
+        return subprocess.CompletedProcess([], 0)
+    with patch.object(inject.subprocess, "run", side_effect=fake_run) as run:
+        assert inject.inject_text("NEW TEXT") is True
+    cmds = [c.args[0][0] for c in run.call_args_list]
+    assert cmds.index("ydotool") > cmds.index("wl-copy")     # paste after copy
+    assert cmds.count("wl-paste") >= 2                       # retried once
 
 
 def test_paste_is_layout_safe_for_apostrophes(monkeypatch):
