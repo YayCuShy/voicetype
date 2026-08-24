@@ -20,7 +20,8 @@ class Config:
     sample_rate: int = 16000           # whisper-native rate
     min_seconds: float = 0.4           # ignore accidental taps
     mic_device: int | None = None      # None = system default input
-    ydotool_delay: int = 8             # ms between keystrokes (12 too slow?)
+    ydotool_delay: int = 12            # ms between keystrokes (fallback path)
+    paste_binding: str = "ctrl+v"      # combo used to paste; terminals want ctrl+shift+v
     quiet: bool = False                # suppress desktop notifications
     tray: bool = False                 # tray icon needs AppIndicator ext
     keep_mic_open: bool = True         # pre-opened stream: no first-word clipping

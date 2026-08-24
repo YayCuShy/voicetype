@@ -72,7 +72,8 @@ class Daemon:
             return
 
         from .inject import inject_text          # deferred: keeps tests light
-        if inject_text(text, self.cfg.ydotool_delay):
+        if inject_text(text, self.cfg.ydotool_delay,
+                       paste_binding=self.cfg.paste_binding):
             notify("voicetype", f'\u2705 "{text[:60]}"', quiet=self.cfg.quiet)
         else:
             notify("voicetype", f"injection failed: {text[:60]}",

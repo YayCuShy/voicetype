@@ -40,6 +40,10 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--min-seconds", type=float)
         sp.add_argument("--mic", type=int, metavar="IDX", dest="mic_device",
                         help="input device index (see --list-mics)")
+        sp.add_argument("--paste-binding", dest="paste_binding",
+                        metavar="COMBO",
+                        help="paste combo: ctrl+v (GUI apps) or "
+                             "ctrl+shift+v (terminals)")
         sp.add_argument("--quiet", action="store_true",
                         help="no desktop notifications")
         sp.add_argument("--no-tray", action="store_true",
@@ -75,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         "compute_type": getattr(args, "compute_type", None),
         "min_seconds": getattr(args, "min_seconds", None),
         "mic_device": getattr(args, "mic_device", None),
+        "paste_binding": getattr(args, "paste_binding", None),
         "quiet": True if getattr(args, "quiet", False) else None,
         "tray": False if getattr(args, "no_tray", False) else None,
     }

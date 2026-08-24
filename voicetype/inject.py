@@ -68,14 +68,13 @@ def _wtype_type(text: str, env: dict) -> bool:
     return r.returncode == 0
 
 
-def _clipboard_paste(text: str, env: dict) -> bool:
+def _clipboard_paste(text: str, env: dict, binding: str = "ctrl+v") -> bool:
     old = _clipboard_get(env)
     if not _clipboard_set(env, text):
         return False
     time.sleep(0.05)
-    # ydotool key codes: 29=left-ctrl, 47=v ; press both, release both
     r = subprocess.run(
-        ["ydotool", "key", "29:1", "47:1", "47:0", "29:0"],
+        ["ydotool", "key", *_paste_combo(binding)],
         capture_output=True, text=True, timeout=5)
     ok = r.returncode == 0
     if not ok:
@@ -87,8 +86,32 @@ def _clipboard_paste(text: str, env: dict) -> bool:
     return ok
 
 
-def inject_text(text: str, delay_ms: int = 8) -> bool:
-    """Type `text` at the current cursor. Returns True if any method worked."""
+# key codes for paste-combo synthesis (linux/input-event-codes.h)
+_KEY_CODES = {"ctrl": 29, "shift": 42, "alt": 56, "v": 47, "c": 46, "x": 45}
+
+
+def _paste_combo(binding: str) -> list[str]:
+    """'ctrl+shift+v' -> ydotool key args pressing modifiers then key."""
+    keys = [k.strip().lower() for k in binding.split("+") if k.strip()]
+    unknown = [k for k in keys if k not in _KEY_CODES]
+    if unknown:
+        raise ValueError(f"unknown keys in paste_binding: {unknown}")
+    seq = []
+    for k in keys:                       # press in order
+        seq.append(f"{_KEY_CODES[k]}:1")
+    for k in reversed(keys):             # release in reverse
+        seq.append(f"{_KEY_CODES[k]}:0")
+    return seq
+
+
+def inject_text(text: str, delay_ms: int = 8,
+                paste_binding: str = "ctrl+v") -> bool:
+    """Deliver `text` to the focused window. True if any method worked.
+
+    Order matters: clipboard-paste is layout/Unicode-safe (keystroke
+    synthesis reinterprets keycodes through the user's xkb layout, which
+    mangles apostrophes etc. on non-US layouts), so it goes first.
+    """
     if not text.strip():
         log.debug("inject_text: nothing to type")
         return False
@@ -98,15 +121,21 @@ def inject_text(text: str, delay_ms: int = 8) -> bool:
         return False
 
     env = _wayland_env()
+    time.sleep(0.05)          # let focus settle after recording stops
 
+    # 1. clipboard paste - Unicode & layout safe, clipboard restored after
+    if shutil.which("wl-copy") and shutil.which("ydotool"):
+        try:
+            if _clipboard_paste(text, env, paste_binding):
+                return True
+        except ValueError as e:
+            log.warning("%s - falling back to keystroke typing", e)
+    # 2. direct keystroke synthesis (ASCII-safe only)
     if shutil.which("ydotool"):
         if _ydotool_type(text, delay_ms):
             return True
     if shutil.which("wtype"):
         if _wtype_type(text, env):
-            return True
-    if shutil.which("wl-copy") and shutil.which("ydotool"):
-        if _clipboard_paste(text, env):
             return True
 
     log.error("all injection methods failed")

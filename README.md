@@ -142,7 +142,8 @@ Create `~/.config/voicetype/config.toml`. All keys optional:
 | `sample_rate` | `16000` | Leave at whisper-native 16 kHz |
 | `min_seconds` | `0.4` | Utterances shorter than this are discarded |
 | `mic_device` | `null` | Input index from `voicetype list-mics`, or null for system default |
-| `ydotool_delay` | `8` | Milliseconds between injected keystrokes |
+| `ydotool_delay` | `12` | Milliseconds between injected keystrokes (fallback path only) |
+| `paste_binding` | `"ctrl+v"` | Combo used to paste from clipboard — the primary injection method, safe for any Unicode/layout. Use `"ctrl+shift+v"` if you mainly dictate into terminals |
 | `quiet` | `false` | Suppress desktop notifications |
 | `tray` | `false` | System tray icon (requires the Ubuntu AppIndicators extension) |
 | `keep_mic_open` | `true` | Keep the mic stream open between utterances — recording starts instantly, no first-word clipping. Side effect: GNOME's mic-in-use dot stays on. Set `false` for privacy-friendly per-utterance capture |
@@ -195,6 +196,8 @@ Why not just `wtype`? GNOME's Mutter doesn't implement the virtual-keyboard prot
 | Terminal gets nothing | Clipboard-fallback pastes use plain Ctrl+V; some terminals want Ctrl+Shift+V |
 | Model download fails | Check connectivity to huggingface.co; delete `~/.cache/huggingface/hub/models--Systran--*` to retry cleanly |
 | Missing first words | Keep `keep_mic_open = true` (default) so capture starts the instant you press the hotkey |
+| Accented garbage instead of apostrophes (`youŕe`) | Keystroke fallback reinterprets keycodes through your keyboard layout — paste mode should have handled it; check `paste_binding` matches your target app |
+| Nothing pastes in terminal | Set `paste_binding = "ctrl+shift+v"`; plain Ctrl+V is literal-insert in most terminals |
 | Wrong microphone | Run `voicetype list-mics`, put the index in `mic_device` |
 | No tray icon | Ubuntu: `sudo apt install gir1.2-ayatanaappindicator3-0.1` and make sure the *Ubuntu AppIndicators* extension is enabled; also check the daemon wasn't started with `--no-tray` |
 | `Gtk-CRITICAL ... gtk_widget_get_scale_factor` spam in logs | Harmless GNOME Shell/AppIndicator polling noise — safe to ignore |

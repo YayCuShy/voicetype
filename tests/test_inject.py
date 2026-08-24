@@ -31,15 +31,33 @@ def test_no_tools_at_all_fails(no_clipboard, monkeypatch):
     assert inject.inject_text("hello") is False
 
 
-def test_ydotool_success_short_circuits(no_clipboard, monkeypatch):
+def test_paste_is_primary_short_circuits_typing(monkeypatch):
+    """Clipboard-paste must run before keystroke synthesis and succeed,
+    so ydotool/wtype are never reached."""
     monkeypatch.setattr(inject.shutil, "which", _which_factory(
         {"ydotool": True, "wtype": True, "wl-copy": True}))
-    called = []
     with patch.object(inject.subprocess, "run",
-                      side_effect=lambda *a, **k:
-                      called.append(a[0][0]) or subprocess.CompletedProcess([], 0)):
+                      return_value=subprocess.CompletedProcess([], 0)) as run:
         assert inject.inject_text("hello") is True
-    assert called == ["ydotool"]          # never tried wtype/clipboard
+    tools = [c.args[0][0] for c in run.call_args_list]
+    assert tools == ["wl-paste", "wl-copy", "ydotool"]   # key-combo only
+    assert all(c.args[0][1] != "type" for c in run.call_args_list)
+
+
+def test_paste_is_layout_safe_for_apostrophes(monkeypatch):
+    """Regression: US-keycode typing mangles 'you're' into 'you're'-style
+    dead-accent artifacts on Spanish layouts - text must travel through
+    the clipboard untouched."""
+    monkeypatch.setattr(inject.shutil, "which", _which_factory(
+        {"ydotool": True, "wtype": True, "wl-copy": True}))
+    copied = []
+    with patch.object(inject.subprocess, "run",
+                      return_value=subprocess.CompletedProcess([], 0)) as run, \
+         patch.object(inject, "_clipboard_get", return_value=None), \
+         patch.object(inject, "_clipboard_set",
+                      side_effect=lambda env, t: copied.append(t) or True):
+        assert inject.inject_text("it's you're") is True
+    assert copied[0] == "it's you're"        # verbatim, not retyped
 
 
 def test_falls_through_to_wtype_when_ydotool_missing(no_clipboard, monkeypatch):
@@ -49,6 +67,23 @@ def test_falls_through_to_wtype_when_ydotool_missing(no_clipboard, monkeypatch):
                       return_value=subprocess.CompletedProcess([], 0)) as run:
         assert inject.inject_text("hi") is True
         assert run.call_args.args[0][0] == "wtype"
+
+
+def test_paste_binding_combo_generation():
+    assert inject._paste_combo("ctrl+v") == ["29:1", "47:1", "47:0", "29:0"]
+    assert inject._paste_combo("ctrl+shift+v") == [
+        "29:1", "42:1", "47:1", "47:0", "42:0", "29:0"]
+    with pytest.raises(ValueError):
+        inject._paste_combo("ctrl+meta+v")
+
+
+def test_invalid_paste_binding_falls_back_to_typing(no_clipboard, monkeypatch):
+    monkeypatch.setattr(inject.shutil, "which", _which_factory(
+        {"ydotool": True, "wl-copy": True}))
+    with patch.object(inject.subprocess, "run",
+                      return_value=subprocess.CompletedProcess([], 0)) as run:
+        assert inject.inject_text("hi", paste_binding="ctrl+bogus") is True
+    assert run.call_args.args[0][:2] == ["ydotool", "type"]
 
 
 def test_clipboard_saved_and_restored_on_paste_path(monkeypatch):
