@@ -71,6 +71,8 @@ class Daemon:
         self.signals.release()
 
     def _on_shutdown(self, _sig, _frame):
+        from .inject import close_keyboard      # deferred: keeps tests light
+        close_keyboard()
         self.recorder.close()
         release_pid_file(self._pid_path)
         sys.exit(0)

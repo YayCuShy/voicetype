@@ -87,8 +87,8 @@ def claim_pid_file(setproctitle_cmdline: str) -> pathlib.Path | None:
     return path
 
 
-def release_pid_file(path: pathlib.Path | None = None) -> None:
-    path = path or pid_file()
+def release_pid_file(path: pathlib.Path | str | None = None) -> None:
+    path = pathlib.Path(path) if path is not None else pid_file()
     try:
         content = path.read_text()
         mine = content.split()[0] == str(os.getpid())
